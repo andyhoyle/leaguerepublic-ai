@@ -52,3 +52,9 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Playwright
+.playwright/
+
+# Test images (keep the sample)
+LeagueRepublic.AI.Tests/bin/Debug/net8.0/IMG_20250918_225720.jpg

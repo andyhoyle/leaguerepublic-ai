@@ -1,0 +1,166 @@
+@using LeagueRepublic.AI.Web.Service.Models
+@using LeagueRepublic.AI.Web.Service
+@using Microsoft.AspNetCore.Components.Forms
+@inject IMatchProcessingService MatchProcessingService
+@inject ILogger<MatchUploadComponent> Logger
+
+<div class="match-upload-container">
+    <h3>Upload Match Scorecard</h3>
+    
+    <div class="upload-section">
+        <InputFile OnChange="OnImageSelected" accept="image/*" />
+        
+        @if (isProcessing)
+        {
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Processing...</span>
+            </div>
+            <p>Analyzing image...</p>
+        }
+    </div>
+
+    @if (analysisResult != null)
+    {
+        <div class="analysis-results">
+            <h4>Analysis Results</h4>
+            <div class="match-details">
+                <p><strong>Teams:</strong> @analysisResult.MatchData.HomeTeam vs @analysisResult.MatchData.AwayTeam</p>
+                <p><strong>Score:</strong> @analysisResult.MatchData.HomeScore - @analysisResult.MatchData.AwayScore</p>
+                <p><strong>Match Date:</strong> @analysisResult.MatchData.MatchDate.ToString("yyyy-MM-dd")</p>
+                <p><strong>Confidence:</strong> @(analysisResult.Confidence.ToString("P2"))</p>
+            </div>
+
+            <div class="games-results">
+                <h5>Game Results</h5>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Home Player</th>
+                            <th>Away Player</th>
+                            <th>Winner</th>
+                            <th>Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var game in analysisResult.MatchData.Games)
+                        {
+                            <tr>
+                                <td>@game.HomePlayer</td>
+                                <td>@game.AwayPlayer</td>
+                                <td>@game.Winner</td>
+                                <td>@game.HomePlayerScore - @game.AwayPlayerScore</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="credentials-section">
+                <h5>Submit to League Republic</h5>
+                <div class="mb-3">
+                    <label for="username" class="form-label">Username</label>
+                    <input type="text" class="form-control" id="username" @bind="username" />
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" class="form-control" id="password" @bind="password" />
+                </div>
+                <button class="btn btn-primary" @onclick="SubmitMatchResult" disabled="@isSubmitting">
+                    @if (isSubmitting)
+                    {
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                        <span>Submitting...</span>
+                    }
+                    else
+                    {
+                        <span>Submit Match Result</span>
+                    }
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(submitMessage))
+            {
+                <div class="alert @(submitSuccess ? "alert-success" : "alert-danger")" role="alert">
+                    @submitMessage
+                </div>
+            }
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">
+            @errorMessage
+        </div>
+    }
+</div>
+
+@code {
+    private bool isProcessing = false;
+    private bool isSubmitting = false;
+    private ImageAnalysisResult? analysisResult;
+    private string errorMessage = string.Empty;
+    private string submitMessage = string.Empty;
+    private bool submitSuccess = false;
+    private string username = string.Empty;
+    private string password = string.Empty;
+
+    private async Task OnImageSelected(InputFileChangeEventArgs e)
+    {
+        errorMessage = string.Empty;
+        analysisResult = null;
+
+        var file = e.File;
+        if (file == null) return;
+
+        const long maxFileSize = 10 * 1024 * 1024; // 10 MB
+        if (file.Size > maxFileSize)
+        {
+            errorMessage = "File size must be less than 10 MB.";
+            return;
+        }
+
+        isProcessing = true;
+        try
+        {
+            using var stream = file.OpenReadStream(maxFileSize);
+            analysisResult = await MatchProcessingService.ProcessMatchImageAsync(stream, file.Name);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing image upload");
+            errorMessage = "An error occurred while processing the image. Please try again.";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private async Task SubmitMatchResult()
+    {
+        if (analysisResult == null) return;
+
+        submitMessage = string.Empty;
+        isSubmitting = true;
+        
+        try
+        {
+            var success = await MatchProcessingService.SubmitMatchResultAsync(analysisResult.MatchData, username, password);
+            submitSuccess = success;
+            submitMessage = success 
+                ? "Match result submitted successfully!" 
+                : "Failed to submit match result. Please check your credentials and try again.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error submitting match result");
+            submitSuccess = false;
+            submitMessage = "An error occurred while submitting the match result. Please try again.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}
